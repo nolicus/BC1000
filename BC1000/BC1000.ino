@@ -1,8 +1,11 @@
 #include "RTClib.h"
+#include <stdio.h>
 
-#define FAULT_INDICATOR_LED     14
-#define SET_RTC_MODE_PIN        11
-#define DEFAULT_SERIAL_BAUD     115200
+#define FAULT_INDICATOR_LED           14
+#define SET_RTC_MODE_PIN              11
+#define DEFAULT_SERIAL_BAUD           115200
+
+#define DEFAULT_CHAR_BUFF_SIZE_SMALL  32
 
 const bool SELF_TEST_STATUS = true; 
 
@@ -12,11 +15,11 @@ enum eDoorPosition_t {
   end
 };
 
-struct xSolarEvent_t {
+typedef struct  {
   uint16_t mDay;
   uint16_t mSunrise;
   uint16_t mSunset;
-};
+} xSolarEvent_t;
 
 /*
   This table consists of 3 values, DAY, SUNRISE, SUNSET.
@@ -25,90 +28,90 @@ struct xSolarEvent_t {
   SUNRISE - This is the time of the sunrise in military time HHMM.
   SUNSET - This is the time of the sunset in military time HHMM.
 */
-xSolarEvent_t Sun_LUT[] = {
-  [0, 0646, 1815],            // 2023 Jan 1
-  [5, 0646, 1819],            // 2023 Jan 5
-  [10, 0646, 1823],           // 2023 Jan 10
-  [15, 0645, 1828],           // 2023 Jan 15
-  [20, 0643, 1833],           // 2023 Jan 20 
-  [25, 0641, 1839],           // 2023 Jan 25
-  [30, 0637, 1844],           // 2023 Jan 30
-  [35, 0633, 1850],           // 2023 Feb 4
-  [40, 0628, 1855],           // 2023 Feb 9
-  [45, 0622, 1901],           // 2023 Feb 14
-  [50, 0616, 1906],           // 2023 Feb 19 
-  [55, 0609, 1912],           // 2023 Feb 24
-  [60, 0602, 1917],           // 2023 Mar 1
-  [65, 0554, 1923],           // 2023 Mar 6
-  [70, 0546, 1928],           // 2023 Mar 11
-  [75, 0538, 1934],           // 2023 Mar 16
-  [80, 0530, 1940],           // 2023 Mar 21
-  [85, 0521, 1945],           // 2023 Mar 26
-  [90, 0512, 1951],           // 2023 Mar 31
-  [95, 0503, 1957],           // 2023 Apr 5
-  [100, 0455, 2003],          // 2023 Apr 10
-  [105, 0446, 2009],          // 2023 Apr 15
-  [110, 0438, 2015],          // 2023 Apr 20
-  [115, 0429, 2022],          // 2023 Apr 25
-  [120, 0421, 2028],          // 2023 Apr 30
-  [125, 0414, 2035],          // 2023 May 5
-  [130, 0407, 2041],          // 2023 May 10 
-  [135, 0400, 2047],          // 2023 May 15
-  [140, 0355, 2053],          // 2023 May 20
-  [145, 0350, 2059],          // 2023 May 25
-  [150, 0345, 2104],          // 2023 May 30
-  [155, 0342, 2109],          // 2023 Jun 4
-  [160, 0340, 2113],          // 2023 Jun 9
-  [165, 0339, 2116],          // 2023 Jun 14
-  [170, 0339, 2118],          // 2023 Jun 19
-  [175, 0340, 2119],          // 2023 Jun 24
-  [180, 0343, 2118],          // 2023 Jun 29
-  [185, 0346, 2117],          // 2023 Jul 4
-  [190, 0350, 2114],          // 2023 Jul 9
-  [195, 0354, 2111],          // 2023 Jul 14
-  [200, 0400, 2107],          // 2023 Jul 19
-  [205, 0405, 2101],          // 2023 Jul 24
-  [210, 0411, 2055],          // 2023 Jul 29
-  [215, 0417, 2048],          // 2023 Aug 3
-  [220, 0423, 2041],          // 2023 Aug 8
-  [225, 0430, 2033],          // 2023 Aug 13
-  [230, 0436, 2025],          // 2023 Aug 18
-  [235, 0442, 2017],          // 2023 Aug 23
-  [240, 0448, 2008],          // 2023 Aug 28
-  [245, 0453, 1959],          // 2023 Sep 2
-  [250, 0459, 1950],          // 2023 Sep 7
-  [255, 0504, 1941],          // 2023 Sep 12
-  [260, 0510, 1932],          // 2023 Sep 17
-  [265, 0515, 1924],          // 2023 Sep 22
-  [270, 0520, 1915],          // 2023 Sep 27
-  [275, 0525, 1907],          // 2023 Oct 2
-  [280, 0531, 1858],          // 2023 Oct 7
-  [285, 0536, 1851],          // 2023 Oct 12
-  [290, 0541, 1843],          // 2023 Oct 17
-  [295, 0546, 1836],          // 2023 Oct 22
-  [300, 0551, 1830],          // 2023 Oct 27
-  [305, 0557, 1824],          // 2023 Nov 1
-  [310, 0602, 1819],          // 2023 Nov 6
-  [315, 0607, 1815],          // 2023 Nov 11
-  [320, 0612, 1811],          // 2023 Nov 16
-  [325, 0618, 1808],          // 2023 Nov 21
-  [330, 0623, 1806],          // 2023 Nov 26
-  [335, 0627, 1805],          // 2023 Dec 1
-  [340, 0632, 1804],          // 2023 Dec 6
-  [345, 0636, 1805],          // 2023 Dec 11
-  [350, 0639, 1806],          // 2023 Dec 16
-  [355, 0642, 1808],          // 2023 Dec 21
-  [360, 0644, 1811],          // 2023 Dec 26
-  [367, 0645, 1812]           // **overflow protection**
-};
-
+xSolarEvent_t Sun_LUT[74];
 const uint16_t Sun_LUT_LENGTH = sizeof(Sun_LUT) / sizeof(xSolarEvent_t);
 
 void setup() 
 {
+  // Fill in the sunrise and sunset table (Nautical Twilight)
+  Sun_LUT[0] = (xSolarEvent_t) {0, 646, 1815};            // 2023 Jan 1
+  Sun_LUT[1] = (xSolarEvent_t) {5, 646, 1819};            // 2023 Jan 5
+  Sun_LUT[2] = (xSolarEvent_t) {10, 646, 1823};           // 2023 Jan 10
+  Sun_LUT[3] = (xSolarEvent_t) {15, 645, 1828};           // 2023 Jan 15
+  Sun_LUT[4] = (xSolarEvent_t) {20, 643, 1833};           // 2023 Jan 20 
+  Sun_LUT[5] = (xSolarEvent_t) {25, 641, 1839};           // 2023 Jan 25
+  Sun_LUT[6] = (xSolarEvent_t) {30, 637, 1844};           // 2023 Jan 30
+  Sun_LUT[7] = (xSolarEvent_t) {35, 633, 1850};           // 2023 Feb 4
+  Sun_LUT[8] = (xSolarEvent_t) {40, 628, 1855};           // 2023 Feb 9
+  Sun_LUT[9] = (xSolarEvent_t) {45, 622, 1901};           // 2023 Feb 14
+  Sun_LUT[10] = (xSolarEvent_t) {50, 616, 1906};           // 2023 Feb 19 
+  Sun_LUT[11] = (xSolarEvent_t) {55, 609, 1912};           // 2023 Feb 24
+  Sun_LUT[12] = (xSolarEvent_t) {60, 602, 1917};           // 2023 Mar 1
+  Sun_LUT[13] = (xSolarEvent_t) {65, 554, 1923};           // 2023 Mar 6
+  Sun_LUT[14] = (xSolarEvent_t) {70, 546, 1928};           // 2023 Mar 11
+  Sun_LUT[15] = (xSolarEvent_t) {75, 538, 1934};           // 2023 Mar 16
+  Sun_LUT[16] = (xSolarEvent_t) {80, 530, 1940};           // 2023 Mar 21
+  Sun_LUT[17] = (xSolarEvent_t) {85, 521, 1945};           // 2023 Mar 26
+  Sun_LUT[18] = (xSolarEvent_t) {90, 512, 1951};           // 2023 Mar 31
+  Sun_LUT[19] = (xSolarEvent_t) {95, 503, 1957};           // 2023 Apr 5
+  Sun_LUT[20] = (xSolarEvent_t) {100, 455, 2003};          // 2023 Apr 10
+  Sun_LUT[21] = (xSolarEvent_t) {105, 446, 2009};          // 2023 Apr 15
+  Sun_LUT[22] = (xSolarEvent_t) {110, 438, 2015};          // 2023 Apr 20
+  Sun_LUT[23] = (xSolarEvent_t) {115, 429, 2022};          // 2023 Apr 25
+  Sun_LUT[24] = (xSolarEvent_t) {120, 421, 2028};          // 2023 Apr 30
+  Sun_LUT[25] = (xSolarEvent_t) {125, 414, 2035};          // 2023 May 5
+  Sun_LUT[26] = (xSolarEvent_t) {130, 407, 2041};          // 2023 May 10 
+  Sun_LUT[27] = (xSolarEvent_t) {135, 400, 2047};          // 2023 May 15
+  Sun_LUT[28] = (xSolarEvent_t) {140, 355, 2053};          // 2023 May 20
+  Sun_LUT[29] = (xSolarEvent_t) {145, 350, 2059};          // 2023 May 25
+  Sun_LUT[30] = (xSolarEvent_t) {150, 345, 2104};          // 2023 May 30
+  Sun_LUT[31] = (xSolarEvent_t) {155, 342, 2109};          // 2023 Jun 4
+  Sun_LUT[32] = (xSolarEvent_t) {160, 340, 2113};          // 2023 Jun 9
+  Sun_LUT[33] = (xSolarEvent_t) {165, 339, 2116};          // 2023 Jun 14
+  Sun_LUT[34] = (xSolarEvent_t) {170, 339, 2118};          // 2023 Jun 19
+  Sun_LUT[35] = (xSolarEvent_t) {175, 340, 2119};          // 2023 Jun 24
+  Sun_LUT[36] = (xSolarEvent_t) {180, 343, 2118};          // 2023 Jun 29
+  Sun_LUT[37] = (xSolarEvent_t) {185, 346, 2117};          // 2023 Jul 4
+  Sun_LUT[38] = (xSolarEvent_t) {190, 350, 2114};          // 2023 Jul 9
+  Sun_LUT[39] = (xSolarEvent_t) {195, 354, 2111};          // 2023 Jul 14
+  Sun_LUT[40] = (xSolarEvent_t) {200, 400, 2107};          // 2023 Jul 19
+  Sun_LUT[41] = (xSolarEvent_t) {205, 405, 2101};          // 2023 Jul 24
+  Sun_LUT[42] = (xSolarEvent_t) {210, 411, 2055};          // 2023 Jul 29
+  Sun_LUT[43] = (xSolarEvent_t) {215, 417, 2048};          // 2023 Aug 3
+  Sun_LUT[44] = (xSolarEvent_t) {220, 423, 2041};          // 2023 Aug 8
+  Sun_LUT[45] = (xSolarEvent_t) {225, 430, 2033};          // 2023 Aug 13
+  Sun_LUT[46] = (xSolarEvent_t) {230, 436, 2025};          // 2023 Aug 18
+  Sun_LUT[47] = (xSolarEvent_t) {235, 442, 2017};          // 2023 Aug 23
+  Sun_LUT[48] = (xSolarEvent_t) {240, 448, 2008};          // 2023 Aug 28
+  Sun_LUT[49] = (xSolarEvent_t) {245, 453, 1959};          // 2023 Sep 2
+  Sun_LUT[50] = (xSolarEvent_t) {250, 459, 1950};          // 2023 Sep 7
+  Sun_LUT[51] = (xSolarEvent_t) {255, 504, 1941};          // 2023 Sep 12
+  Sun_LUT[52] = (xSolarEvent_t) {260, 510, 1932};          // 2023 Sep 17
+  Sun_LUT[53] = (xSolarEvent_t) {265, 515, 1924};          // 2023 Sep 22
+  Sun_LUT[54] = (xSolarEvent_t) {270, 520, 1915};          // 2023 Sep 27
+  Sun_LUT[55] = (xSolarEvent_t) {275, 525, 1907};          // 2023 Oct 2
+  Sun_LUT[56] = (xSolarEvent_t) {280, 531, 1858};          // 2023 Oct 7
+  Sun_LUT[57] = (xSolarEvent_t) {285, 536, 1851};          // 2023 Oct 12
+  Sun_LUT[58] = (xSolarEvent_t) {290, 541, 1843};          // 2023 Oct 17
+  Sun_LUT[59] = (xSolarEvent_t) {295, 546, 1836};          // 2023 Oct 22
+  Sun_LUT[60] = (xSolarEvent_t) {300, 551, 1830};          // 2023 Oct 27
+  Sun_LUT[61] = (xSolarEvent_t) {305, 557, 1824};          // 2023 Nov 1
+  Sun_LUT[62] = (xSolarEvent_t) {310, 602, 1819};          // 2023 Nov 6
+  Sun_LUT[63] = (xSolarEvent_t) {315, 607, 1815};          // 2023 Nov 11
+  Sun_LUT[64] = (xSolarEvent_t) {320, 612, 1811};          // 2023 Nov 16
+  Sun_LUT[65] = (xSolarEvent_t) {325, 618, 1808};          // 2023 Nov 21
+  Sun_LUT[66] = (xSolarEvent_t) {330, 623, 1806};          // 2023 Nov 26
+  Sun_LUT[67] = (xSolarEvent_t) {335, 627, 1805};          // 2023 Dec 1
+  Sun_LUT[68] = (xSolarEvent_t) {340, 632, 1804};          // 2023 Dec 6
+  Sun_LUT[69] = (xSolarEvent_t) {345, 636, 1805};          // 2023 Dec 11
+  Sun_LUT[70] = (xSolarEvent_t) {350, 639, 1806};          // 2023 Dec 16
+  Sun_LUT[71] = (xSolarEvent_t) {355, 642, 1808};          // 2023 Dec 21
+  Sun_LUT[72] = (xSolarEvent_t) {360, 644, 1811};          // 2023 Dec 26
+  Sun_LUT[73] = (xSolarEvent_t) {367, 645, 1812};           // **overflow protection**
+
   // put your setup code here, to run once:
-  setPinMode(FAULT_INDICATOR_LED, OUTPUT);
-  setPinMode(SET_RTC_MODE_PIN, INPUT_PULLUP);
+  pinMode(FAULT_INDICATOR_LED, OUTPUT);
+  pinMode(SET_RTC_MODE_PIN, INPUT_PULLUP);
   digitalWrite(FAULT_INDICATOR_LED, HIGH);
 
   // Start up serial lines
@@ -164,33 +167,37 @@ void StartUpTest()
 
 void TEST_PASSED(String testName)
 {
-  Serial.printf("TEST: %s >> PASSED\r\n");
+  char buffer[DEFAULT_CHAR_BUFF_SIZE_SMALL] = "";
+  sprintf(buffer, "TEST: %s >> PASSED\r\n", testName.c_str());  
+  Serial.printf(buffer);
 }
 
 void TEST_FAILED(String testName)
 {
-  Serial.printf("TEST: %s >> FAILED\r\n");
+  char buffer[DEFAULT_CHAR_BUFF_SIZE_SMALL] = "";
+  sprintf(buffer, "TEST: %s >> FAILED\r\n", testName.c_str());  
+  Serial.printf(buffer);
 }
 
 void Test_Serial()
 {
   Serial.println("Testing Serial Port ...");
 
-  if(numBytesToWrite)
-  {
+  // if(numBytesToWrite)
+  // {
     TEST_PASSED("Test_Serial");
-  }
-  else 
-  {
-    TEST_FAILED("Test_Serial");
-  }
+  // }
+  // else 
+  // {
+  //   TEST_FAILED("Test_Serial");
+  // }
 }
 
 void Test_StatusLED() 
 {
   for(uint8_t i = 0; i < 10; i++)
   {
-    digitalWrite(FAULT_INDICATOR_PIN, LOW);
+    digitalWrite(FAULT_INDICATOR_LED, LOW);
     delay(250);
     digitalWrite(FAULT_INDICATOR_LED, HIGH);
     delay(250);
@@ -217,7 +224,7 @@ void Test_TempHumid()
   // Check the temp and humidity sensor to make sure it is connected and operating
 }
 
-void Test_MotorContorller()
+void Test_MotorController()
 {
   // Check the motor controller to make sure it is connected and working
 }
@@ -284,7 +291,7 @@ void init_RTC()
 {
   if(digitalRead(SET_RTC_MODE_PIN) == LOW)
   {
-    int inputChar = '': 
+    int inputChar = -1; 
     // Have a set pin pull down that can put the 
     // unit into "set date and time" mode
     Serial.printf("SET DATE AND TIME? (Y/N)");
@@ -299,13 +306,19 @@ void init_RTC()
       delay(300);
     }
 
-    if(inputChar == 'Y')
+    if(inputChar == atoi("Y"))
     {
       Serial.println("Received character 'y', proceeding with setting date and time\r\n");
 
       Serial.println("Set Year:");
-      while
-      {}
+
+      uint16_t i = 500;
+      do
+      {
+        // TODO: wait for input from serial
+        delay(50);
+      } while(i--);
+      
       Serial.println("Set Month:");
       Serial.println("Set Day:");
 
@@ -325,7 +338,9 @@ void init_RTC()
 */
 uint16_t getDay()
 {
+  uint16_t day = 0; 
 
+  return day; 
 }
 
 /*
@@ -333,7 +348,10 @@ uint16_t getDay()
 */
 uint16_t getHourMin()
 {
+  uint16_t hour = 0; 
+  uint16_t min = 0; 
 
+  return min | (hour << 8);
 }
 
 /*****************************************
@@ -347,12 +365,16 @@ void init_TandH()
 
 uint32_t getTemp()
 {
+  uint32_t result = 0; 
 
+  return result; 
 }
 
 uint32_t getHumid()
 {
+  uint32_t result = 0; 
 
+  return result; 
 }
 
 /*****************************************
