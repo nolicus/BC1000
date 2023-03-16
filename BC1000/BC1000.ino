@@ -1,11 +1,14 @@
 #include "RTClib.h"
 #include <stdio.h>
+#include "Wire.h"
 
 #define FAULT_INDICATOR_LED           14
 #define SET_RTC_MODE_PIN              11
 #define DEFAULT_SERIAL_BAUD           115200
 
 #define DEFAULT_CHAR_BUFF_SIZE_SMALL  32
+
+RTC_DS3231 rtc;
 
 const bool SELF_TEST_STATUS = true; 
 
@@ -33,6 +36,12 @@ const uint16_t Sun_LUT_LENGTH = sizeof(Sun_LUT) / sizeof(xSolarEvent_t);
 
 void setup() 
 {
+  // Start up serial lines
+  Serial.begin(DEFAULT_SERIAL_BAUD);
+  delay(5000);
+
+  Wire1.begin();
+  
   // Fill in the sunrise and sunset table (Nautical Twilight)
   Sun_LUT[0] = (xSolarEvent_t) {0, 646, 1815};            // 2023 Jan 1
   Sun_LUT[1] = (xSolarEvent_t) {5, 646, 1819};            // 2023 Jan 5
@@ -114,8 +123,8 @@ void setup()
   pinMode(SET_RTC_MODE_PIN, INPUT_PULLUP);
   digitalWrite(FAULT_INDICATOR_LED, HIGH);
 
-  // Start up serial lines
-  Serial.begin(DEFAULT_SERIAL_BAUD);
+  // Start up RTC
+  init_RTC();
 
   // Self Test
   StartUpTest();
@@ -157,12 +166,12 @@ void StartUpTest()
 {
   // run systems test, verify that all systems are connected and fully operational!
 
-  Test_Serial(); 
-  Test_StatusLED();
-  Test_I2C();  
-  Test_RTC(); 
-  Test_TempHumid(); 
-  Test_MotorController();
+  Test_Serial();              // COMPLETE - RED
+  Test_StatusLED();           // INCOMPLETE 
+  Test_I2C();                 // INCOMPLETE
+  Test_RTC();                 // COMPLETE - RED
+  Test_TempHumid();           // INCOMPLETE
+  Test_MotorController();     // INCOMPLETE
 }
 
 void TEST_PASSED(String testName)
@@ -181,7 +190,7 @@ void TEST_FAILED(String testName)
 
 void Test_Serial()
 {
-  Serial.println("Testing Serial Port ...");
+  Serial.print("Testing Serial Port ...\r\n");
 
   // if(numBytesToWrite)
   // {
@@ -216,6 +225,8 @@ void Test_RTC()
 {
   // Check the real time clock to make sure it is connected and operating
 
+  printTime();
+   
   // 1. Check to see if the RTC exists 
 }
 
@@ -289,69 +300,186 @@ uint16_t getSunset(uint16_t &day)
 
 void init_RTC()
 {
-  if(digitalRead(SET_RTC_MODE_PIN) == LOW)
+  Serial.print("STARTING INIT_RTC...\r\n");
+
+  if(!rtc.begin(&Wire1))
   {
-    int inputChar = -1; 
-    // Have a set pin pull down that can put the 
-    // unit into "set date and time" mode
-    Serial.printf("SET DATE AND TIME? (Y/N)");
-  
-    for(uint8_t i = 0; i < 200; i++)
-    {
-      if(Serial.available() > 0)
-      {
-        inputChar = Serial.read();
-        break;
-      }
-      delay(300);
-    }
-
-    if(inputChar == atoi("Y"))
-    {
-      Serial.println("Received character 'y', proceeding with setting date and time\r\n");
-
-      Serial.println("Set Year:");
-
-      uint16_t i = 500;
-      do
-      {
-        // TODO: wait for input from serial
-        delay(50);
-      } while(i--);
-      
-      Serial.println("Set Month:");
-      Serial.println("Set Day:");
-
-      Serial.println("Set Hour:");
-      Serial.println("Set Minute:");
-
-    }
-    else 
-    {
-      Serial.println("Did not recieve a 'y' character or system timed out before character was read\r\n");
-    }
+    Serial.print("Couldn't find RTC\r\n");
+    Serial.flush();
   }
+  else
+  {
+    Serial.print("RTC Found\r\n");
+    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));      // Use this line if need to update timing.
+  }
+
+  if(rtc.lostPower())
+  {
+    Serial.print("RTC lost power, let's set the time!\r\n");
+    // When time needs to be set on a new device, or after a power loss, the
+    // following line sets the RTC to the date & time this sketch was compiled
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // This line sets the RTC with an explicit date & time, for example to set
+    // January 21, 2014 at 3am you would call:
+    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+    
+  }
+  else
+  {
+    Serial.print("RTC hasn't lost power\r\n");
+  }
+
+  Serial.print("INIT_RTC COMPLETE ...\r\n\r\n");
 }
+
+char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+
+/*
+  Get the current time from the RTC, and print it out
+*/
+void printTime()
+{
+    DateTime now = rtc.now();
+
+    Serial.print(now.year(), DEC);
+    Serial.print('/');
+    Serial.print(now.month(), DEC);
+    Serial.print('/');
+    Serial.print(now.day(), DEC);
+    Serial.print(" (");
+    Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
+    Serial.print(") ");
+    Serial.print(now.hour(), DEC);
+    Serial.print(':');
+    Serial.print(now.minute(), DEC);
+    Serial.print(':');
+    Serial.print(now.second(), DEC);
+    Serial.println();
+
+    Serial.print(" since midnight 1/1/1970 = ");
+    Serial.print(now.unixtime());
+    Serial.print("s = ");
+    Serial.print(now.unixtime() / 86400L);
+    Serial.println("d");
+
+    // calculate a date which is 7 days, 12 hours, 30 minutes, 6 seconds into the future
+    DateTime future (now + TimeSpan(7,12,30,6));
+
+    Serial.print(" now + 7d + 12h + 30m + 6s: ");
+    Serial.print(future.year(), DEC);
+    Serial.print('/');
+    Serial.print(future.month(), DEC);
+    Serial.print('/');
+    Serial.print(future.day(), DEC);
+    Serial.print(' ');
+    Serial.print(future.hour(), DEC);
+    Serial.print(':');
+    Serial.print(future.minute(), DEC);
+    Serial.print(':');
+    Serial.print(future.second(), DEC);
+    Serial.println();
+
+    Serial.print("Temperature: ");
+    Serial.print(rtc.getTemperature());
+    Serial.println(" C");
+
+    Serial.println();
+    delay(3000);
+}
+
+#define JANUARY_DAY_COUNT     31
+#define FEBRUARY_DAY_COUNT    28
+#define MARCH_DAY_COUNT       31
+#define APRIL_DAY_COUNT       30
+#define MAY_DAY_COUNT         31
+#define JUNE_DAY_COUNT        30
+#define JULY_DAY_COUNT        31
+#define AUGUST_DAY_COUNT      31
+#define SEPTEMBER_DAY_COUNT   30
+#define OCTOBER_DAY_COUNT     31
+#define NOVEMBER_DAY_COUNT    30
+#define DECEMBER_DAY_COUNT    31
+
+#define LEAP_YEAR_BASE        2020
 
 /*
   returns the day of the year for comparison with the LUT
 */
-uint16_t getDay()
+uint16_t GetDaysToDate()
 {
-  uint16_t day = 0; 
+  uint16_t runningDayTotal = 0;
+  uint16_t month = 0; 
+  int year = 0; 
+    
+  DateTime now = rtc.now();
+  month = now.month(); 
+  year = now.year(); 
 
-  return day; 
+  if((year - LEAP_YEAR_BASE) % 4)
+  {
+    runningDayTotal = monthToDays(month) + 1;           
+  }
+  else
+  {
+    runningDayTotal = monthToDays(month);        
+  }
+  
+  runningDayTotal += now.day();  
+  
+  Serial.print(runningDayTotal, DEC);
+
+  return runningDayTotal; 
 }
 
 /*
   returns 4 digits representing HH:MM. 
 */
-uint16_t getHourMin()
+uint16_t GetHourMin()
 {
   uint16_t hour = 0; 
   uint16_t min = 0; 
 
+  DateTime now = rtc.now();
+  hour = now.hour(); 
+  min = now.minute();  
+
   return min | (hour << 8);
+}
+
+uint16_t monthToDays(uint16_t month)
+{
+  uint16_t totalDays = 0; 
+  
+  // NOTE: This switch statement is intended to fall through, adding all
+  // subsequent months. 
+  switch(month)
+  {
+    case 12: 
+      totalDays += NOVEMBER_DAY_COUNT;
+    case 11: 
+      totalDays += OCTOBER_DAY_COUNT;
+    case 10:
+      totalDays += SEPTEMBER_DAY_COUNT;
+    case 9:                      
+      totalDays += AUGUST_DAY_COUNT;
+    case 8:
+      totalDays += JULY_DAY_COUNT;
+    case 7:
+      totalDays += JUNE_DAY_COUNT;
+    case 6:
+      totalDays += MAY_DAY_COUNT;
+    case 5:
+      totalDays += APRIL_DAY_COUNT;
+    case 4:
+      totalDays += MARCH_DAY_COUNT;
+    case 3:
+      totalDays += FEBRUARY_DAY_COUNT;
+    case 2:
+      totalDays += JANUARY_DAY_COUNT;
+      break;                                    
+  }  
+
+  return totalDays; 
 }
 
 /*****************************************
