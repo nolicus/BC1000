@@ -3,7 +3,6 @@
 #include "Wire.h"
 
 #define FAULT_INDICATOR_LED           14
-#define SET_RTC_MODE_PIN              11
 #define DEFAULT_SERIAL_BAUD           115200
 
 #define DEFAULT_CHAR_BUFF_SIZE_SMALL  32
@@ -120,11 +119,11 @@ void setup()
 
   // put your setup code here, to run once:
   pinMode(FAULT_INDICATOR_LED, OUTPUT);
-  pinMode(SET_RTC_MODE_PIN, INPUT_PULLUP);
+  pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(FAULT_INDICATOR_LED, HIGH);
 
   // Start up RTC
-  init_RTC();
+  TIME_init();
 
   // Self Test
   StartUpTest();
@@ -177,8 +176,17 @@ void StartUpTest()
 void TEST_PASSED(String testName)
 {
   char buffer[DEFAULT_CHAR_BUFF_SIZE_SMALL] = "";
-  sprintf(buffer, "TEST: %s >> PASSED\r\n", testName.c_str());  
+  sprintf(buffer, "TEST: %s >> PASSED\r\n", testName.c_str()); 
   Serial.printf(buffer);
+
+  // rapid flash for pass
+  for(uint8_t i = 0; i < 10; i++)
+  {
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(20);    
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(20);    
+  } 
 }
 
 void TEST_FAILED(String testName)
@@ -186,6 +194,15 @@ void TEST_FAILED(String testName)
   char buffer[DEFAULT_CHAR_BUFF_SIZE_SMALL] = "";
   sprintf(buffer, "TEST: %s >> FAILED\r\n", testName.c_str());  
   Serial.printf(buffer);
+
+  // long slow flash for fail
+  for(uint8_t i = 0; i < 3; i++)
+  {
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);    
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);    
+  } 
 }
 
 void Test_Serial()
@@ -225,8 +242,35 @@ void Test_RTC()
 {
   // Check the real time clock to make sure it is connected and operating
 
-  printTime();
-   
+  TIME_print();
+
+  if(TIME_dateToDayCount(2024, 1, 1) == 1)
+  {
+    TEST_PASSED("Date to Day Count - TEST 1");
+  }
+  else
+  {
+    TEST_FAILED("Date to Day Count - TEST 1");
+  }  
+  
+  if(TIME_dateToDayCount(2023, 5, 15) == 135)  
+  {
+    TEST_PASSED("Date to Day Count - TEST 2");
+  }
+  else
+  {
+    TEST_FAILED("Date to Day Count - TEST 2");
+  }
+
+  if(TIME_dateToDayCount(2024, 5, 15) == 136)  
+  {
+    TEST_PASSED("Date to Day Count - TEST 3");
+  }
+  else
+  {
+    TEST_FAILED("Date to Day Count - TEST 3");
+  }
+
   // 1. Check to see if the RTC exists 
 }
 
@@ -298,7 +342,7 @@ uint16_t getSunset(uint16_t &day)
   REAL TIME CLOCK
 ******************************************/
 
-void init_RTC()
+void TIME_init()
 {
   Serial.print("STARTING INIT_RTC...\r\n");
 
@@ -337,7 +381,7 @@ char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursd
 /*
   Get the current time from the RTC, and print it out
 */
-void printTime()
+void TIME_print()
 {
     DateTime now = rtc.now();
 
@@ -387,6 +431,10 @@ void printTime()
     delay(3000);
 }
 
+/////////////////////////////////////////
+// DAYS IN EACH MONTH ///////////////////
+/////////////////////////////////////////
+
 #define JANUARY_DAY_COUNT     31
 #define FEBRUARY_DAY_COUNT    28
 #define MARCH_DAY_COUNT       31
@@ -405,28 +453,17 @@ void printTime()
 /*
   returns the day of the year for comparison with the LUT
 */
-uint16_t GetDaysToDate()
+uint16_t TIME_GetDays()
 {
   uint16_t runningDayTotal = 0;
-  uint16_t month = 0; 
-  int year = 0; 
     
-  DateTime now = rtc.now();
-  month = now.month(); 
-  year = now.year(); 
+  DateTime now = rtc.now();                                                       //Fetch time from RTC
 
-  if((year - LEAP_YEAR_BASE) % 4)
-  {
-    runningDayTotal = monthToDays(month) + 1;           
-  }
-  else
-  {
-    runningDayTotal = monthToDays(month);        
-  }
-  
-  runningDayTotal += now.day();  
-  
+  runningDayTotal = TIME_dateToDayCount(now.year(), now.month(), now.day()) + 1;
+
+  Serial.print("Running Day Total: ");
   Serial.print(runningDayTotal, DEC);
+  Serial.println(); 
 
   return runningDayTotal; 
 }
@@ -434,7 +471,7 @@ uint16_t GetDaysToDate()
 /*
   returns 4 digits representing HH:MM. 
 */
-uint16_t GetHourMin()
+uint16_t TIME_GetHourMin()
 {
   uint16_t hour = 0; 
   uint16_t min = 0; 
@@ -446,7 +483,31 @@ uint16_t GetHourMin()
   return min | (hour << 8);
 }
 
-uint16_t monthToDays(uint16_t month)
+/*
+  takes the month, year and day of the month and converts it into days since 
+  start of year.
+
+  returns day since January 1
+*/
+uint16_t TIME_dateToDayCount(uint16_t year, uint16_t month, uint16_t dayOfMonth)
+{
+  uint16_t result = 0;
+
+  result = TIME_monthToDays(month);
+
+  // If it's leap year and the date is after February, then add in the leap day. 
+  if(((year - LEAP_YEAR_BASE) % 4) && (month > 2))
+  {
+    result++;
+  }
+    
+  result += dayOfMonth;  
+
+  return result; 
+}
+
+
+uint16_t TIME_monthToDays(uint16_t month)
 {
   uint16_t totalDays = 0; 
   
